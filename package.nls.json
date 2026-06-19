@@ -25,7 +25,7 @@
     "commands.projectManager.removeProjectFromTag.title": "Remove Project from Tag",
     "commands.projectManager.openProjectInCurrentWindow.title": "Open Project in Current Window",
     "commands.projectManager.openProjectInNewWindow.title": "Open Project in New Window",
-    "commands.projectManager.openProjectLocalReplica.title": "Open Project Locally ...",
+    "commands.projectManager.openProjectLocalReplica.title": "Open Local Project ...",
 
     "commands.projectHistory.refresh.title": "Refresh Project History",
     "commands.projectHistory.clearSelection.title": "Clear Selection",

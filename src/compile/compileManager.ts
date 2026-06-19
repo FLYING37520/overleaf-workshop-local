@@ -26,6 +26,82 @@ class CompileDiagnosticProvider {
     private diagnosticCollection = vscode.languages.createDiagnosticCollection(ROOT_NAME);
     constructor(private readonly vfsm: RemoteFileSystemProvider) {};
 
+    private async getLocalReplicaRoot(uri: vscode.Uri) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (workspaceRoot?.scheme !== 'file') { return undefined; }
+        const setting = await LocalReplicaSCMProvider.readSettings();
+        const parsed = uri.scheme === ROOT_NAME ? parseUri(uri) : undefined;
+        const origin = parsed ? uri.with({path: `/${parsed.projectName}`}) : uri;
+        if (setting?.uri !== undefined && vscode.Uri.parse(setting.uri).toString() === origin.toString()) {
+            return workspaceRoot;
+        }
+        return undefined;
+    }
+
+    private normalizeLogPath(path: string) {
+        return this.validatePath(path).replace(/^\.\//, '').replace(/^\/+/, '');
+    }
+
+    private async exportCompileArtifacts(uri: vscode.Uri, vfs: any, content: string, logs: any, hasError: boolean) {
+        const workspaceRoot = await this.getLocalReplicaRoot(uri);
+        if (workspaceRoot === undefined) { return; }
+
+        const overleafDir = vscode.Uri.joinPath(workspaceRoot, '.overleaf');
+        const outputDir = vscode.Uri.joinPath(workspaceRoot, OUTPUT_FOLDER_NAME);
+        await vscode.workspace.fs.createDirectory(overleafDir);
+        await vscode.workspace.fs.createDirectory(outputDir);
+
+        const diagnostics = {
+            status: hasError ? 'failed' : 'success',
+            generatedAt: new Date().toISOString(),
+            rootDoc: vfs.getRootDocName().replace(/^\/+/, ''),
+            errors: [] as any[],
+            warnings: [] as any[],
+            information: [] as any[],
+        };
+
+        const toExportItem = (log: ErrorSchema) => ({
+            file: this.normalizeLogPath(log.file),
+            line: log.line,
+            level: log.level,
+            message: log.message,
+            raw: log.raw,
+        });
+
+        if (logs !== undefined) {
+            diagnostics.errors = logs.errors.map(toExportItem);
+            diagnostics.warnings = logs.warnings.map(toExportItem);
+            diagnostics.information = logs.information.map(toExportItem);
+        } else {
+            diagnostics.status = content === '' ? 'error' : 'success';
+        }
+
+        const summary = [
+            `# Overleaf Compile ${diagnostics.status}`,
+            '',
+            `Generated: ${diagnostics.generatedAt}`,
+            `Errors: ${diagnostics.errors.length}`,
+            `Warnings: ${diagnostics.warnings.length}`,
+            `Information: ${diagnostics.information.length}`,
+            '',
+            ...diagnostics.errors.slice(0, 20).map(item => `- ${item.file}${item.line === null ? '' : `:${item.line}`}: ${item.message}`),
+            '',
+        ].join('\n');
+
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(outputDir, 'output.log'), new TextEncoder().encode(content));
+        try {
+            const pdf = await vfs.openFile(vfs.pathToUri(OUTPUT_FOLDER_NAME, 'output.pdf'));
+            if (pdf.length !== 0) {
+                await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(outputDir, 'output.pdf'), pdf);
+            }
+        } catch (error) {
+            // A failed compile may not produce a PDF; diagnostics are still useful.
+        }
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(overleafDir, 'compile.log'), new TextEncoder().encode(content));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(overleafDir, 'compile-diagnostics.json'), new TextEncoder().encode(JSON.stringify(diagnostics, null, 2)));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(overleafDir, 'compile-summary.md'), new TextEncoder().encode(summary));
+    }
+
     private async getRange(log: ErrorSchema, path: string, vfs: any) {
         let textDoc: vscode.TextDocument;
         try {
@@ -73,6 +149,7 @@ class CompileDiagnosticProvider {
         content = new TextDecoder().decode(await vfs.openFile(_uri));
         const logs = new LatexParser(content).parse();
         if (logs === undefined) {
+            await this.exportCompileArtifacts(uri, vfs, content, logs, content === '');
             return content === ''? true :false;
         }
         let hasError = false;
@@ -100,6 +177,7 @@ class CompileDiagnosticProvider {
             const _uri = vfs.pathToUri(file);
             this.diagnosticCollection.set(_uri, diagnostics);
         }
+        await this.exportCompileArtifacts(uri, vfs, content, logs, hasError);
         return hasError;
     }
 
@@ -149,7 +227,14 @@ export class CompileManager {
         // check if supported local replica
         const localSetting = await LocalReplicaSCMProvider.readSettings();
         if (localSetting?.uri && localSetting?.enableCompileNPreview===true) {
-            return vscode.Uri.parse(localSetting.uri);
+            const localUri = vscode.window.activeTextEditor?.document.uri;
+            const localPath = localUri?.scheme === 'file' ? await LocalReplicaSCMProvider.uriToPath(localUri) : undefined;
+            const origin = vscode.Uri.parse(localSetting.uri);
+            if (localPath) {
+                const target = vscode.Uri.joinPath(origin, localPath.replace(/^\/+/, ''));
+                return target.with({query: origin.query, fragment: origin.fragment});
+            }
+            return origin;
         }
         // otherwise return undefined
         return undefined;

@@ -89,6 +89,15 @@ export class LocalReplicaSCMProvider extends BaseSCM {
         return sanitized;
     }
 
+    public static getDefaultBaseUri(serverName: string, projectName: string): vscode.Uri {
+        const baseUri = vscode.Uri.file(require('path').join(
+            require('os').homedir(),
+            'Overleaf Workshop',
+            serverName,
+        ));
+        return vscode.Uri.joinPath(baseUri, LocalReplicaSCMProvider.sanitizeProjectFolderName(projectName));
+    }
+
     public static async validateBaseUri(uri: string, projectName?: string): Promise<vscode.Uri> {
         try {
             let baseUri = vscode.Uri.file(uri);
@@ -340,18 +349,66 @@ export class LocalReplicaSCMProvider extends BaseSCM {
     private async initWatch() {
         // write ".overleaf/settings.json" if not exist
         const settingUri = vscode.Uri.joinPath(this.baseUri, '.overleaf/settings.json');
+        const indexUri = vscode.Uri.joinPath(this.baseUri, '.overleaf/index.json');
         try {
             await vscode.workspace.fs.stat(settingUri);
+            const content = await vscode.workspace.fs.readFile(settingUri);
+            const settings = JSON.parse(new TextDecoder().decode(content));
+            const updatedSettings = {
+                ...settings,
+                projectId: settings.projectId ?? this.vfs.projectId,
+                projectName: settings.projectName ?? this.vfs.projectName,
+                mode: settings.mode ?? 'local-first',
+                enableCompileNPreview: settings.enableCompileNPreview ?? true,
+                sync: settings.sync ?? {
+                    enabled: true,
+                    direction: 'bidirectional',
+                },
+                compile: settings.compile ?? {
+                    remote: true,
+                    preview: true,
+                },
+            };
+            if (JSON.stringify(settings) !== JSON.stringify(updatedSettings)) {
+                await vscode.workspace.fs.writeFile(settingUri, Buffer.from(JSON.stringify(updatedSettings, null, 4)));
+            }
         } catch (error) {
             await vscode.workspace.fs.writeFile(settingUri, Buffer.from(
                 JSON.stringify({
                     'uri': this.vfs.origin.toString(),
                     'serverName': this.vfs.serverName,
-                    'enableCompileNPreview': false,
+                    'projectId': this.vfs.projectId,
                     'projectName': this.vfs.projectName,
+                    'mode': 'local-first',
+                    'enableCompileNPreview': true,
+                    'sync': {
+                        'enabled': true,
+                        'direction': 'bidirectional',
+                    },
+                    'compile': {
+                        'remote': true,
+                        'preview': true,
+                    },
                 }, null, 4)
             ));
         }
+        const files = this.vfs.walk(entity => entity._type !== 'outputs').reduce((record, item) => {
+            const path = item.path.replace(/^\/+/, '');
+            if (path === '') { return record; }
+            record[path] = {
+                entityId: item.entity._id,
+                type: item.entity._type,
+                readonly: item.entity.readonly ?? false,
+            };
+            return record;
+        }, {} as Record<string, {entityId: string, type: string | undefined, readonly: boolean}>);
+        await vscode.workspace.fs.writeFile(indexUri, Buffer.from(JSON.stringify({
+            generatedAt: new Date().toISOString(),
+            serverName: this.vfs.serverName,
+            projectId: this.vfs.projectId,
+            projectName: this.vfs.projectName,
+            files,
+        }, null, 4)));
 
         this.vfsWatcher = vscode.workspace.createFileSystemWatcher(
             new vscode.RelativePattern( this.vfs.origin, '**/*' )

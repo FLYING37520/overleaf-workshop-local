@@ -566,7 +566,11 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         });
     }
 
-    async openProjectLocalReplica(project: ProjectItem) {
+    private replicaPersistToUri(baseUri: string): vscode.Uri {
+        return baseUri.startsWith('file:') ? vscode.Uri.parse(baseUri) : vscode.Uri.file(baseUri);
+    }
+
+    async openProjectLocalReplica(project: ProjectItem, newWindow=false) {
         // should close other open vfs firstly
         const vfsFolder = vscode.workspace.workspaceFolders?.find(folder => folder.uri.scheme===ROOT_NAME);
         if (vfsFolder) {
@@ -582,23 +586,35 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         // if not exist, create new one
         if (replicas.length===0) {
             const vfs = (await (await vscode.commands.executeCommand('remoteFileSystem.prefetch', uri))) as VirtualFileSystem;
+            const baseUri = LocalReplicaSCMProvider.getDefaultBaseUri(serverName, project.label);
             await vfs.init();
-            const answer = await vscode.window.showWarningMessage( vscode.l10n.t('No local replica found, create one for project "{label}" ?', {label:project.label}), "Yes", "No");
-            if (answer === "Yes") {
-                await (await vscode.commands.executeCommand(`${ROOT_NAME}.projectSCM.newSCM`, LocalReplicaSCMProvider));
-                // fetch local replica scm again
-                scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
-                replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
-            } else {
-                vfs.dispose();
-                return;
-            }
+            vfs.setProjectSCMPersist(baseUri.toString(), {
+                enabled: true,
+                label: LocalReplicaSCMProvider.label,
+                baseUri: baseUri.toString(),
+                settings: {},
+            });
+            const localReplica = new LocalReplicaSCMProvider(vfs, baseUri);
+            const triggers = await localReplica.triggers;
+            triggers.forEach(trigger => trigger.dispose());
+            // fetch local replica scm again
+            scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
+            replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
             vfs.dispose();
         }
 
         // open local replica
-        const replicasPath = replicas.map(scmPersist => vscode.Uri.parse(scmPersist.baseUri).fsPath);
+        const replicasPath = replicas.map(scmPersist => this.replicaPersistToUri(scmPersist.baseUri).fsPath);
         if (replicasPath.length===0) { return; }
+        if (replicasPath.length===1) {
+            const uri = vscode.Uri.file(replicasPath[0]);
+            vscode.commands.executeCommand('vscode.openFolder', uri, newWindow);
+            if (newWindow) {
+                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+            }
+            vscode.commands.executeCommand('workbench.view.explorer');
+            return;
+        }
         const quickPickItems = replicasPath.map(path => {
             let label = path;
             let buttons = [{
@@ -620,7 +636,7 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
                     .then(answer => {
                         if (answer === 'Yes') {
                             // remove local replica from scm persists
-                            const scmKey = Object.keys(scmPersists).find(key => vscode.Uri.parse(scmPersists[key].baseUri).fsPath===item.label)!;
+                            const scmKey = Object.keys(scmPersists).find(key => this.replicaPersistToUri(scmPersists[key].baseUri).fsPath===item.label)!;
                             GlobalStateManager.updateServerProjectSCMPersist(this.context, serverName, projectId, scmKey);
                             // remove entry from quick pick
                             quickPick.items = quickPick.items.filter(item => item.label!==item.label);
@@ -639,8 +655,10 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         })
         .then(path => {
             const uri = vscode.Uri.file(path as string);
-            // always open in current window
-            vscode.commands.executeCommand('vscode.openFolder', uri, false);
+            vscode.commands.executeCommand('vscode.openFolder', uri, newWindow);
+            if (newWindow) {
+                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+            }
             vscode.commands.executeCommand('workbench.view.explorer');
         });
     }

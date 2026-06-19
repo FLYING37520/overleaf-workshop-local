@@ -117,6 +117,7 @@ export class VirtualFileSystem extends vscode.Disposable {
     private isDirty: boolean = true;
     private initializing?: Promise<ProjectEntity>;
     private retryConnection: number = 0;
+    private lastConnectionError?: string;
     private outputBuildId?: string;
     private compileGroup?: string;
     private clsiServerId?: string;
@@ -180,7 +181,10 @@ export class VirtualFileSystem extends vscode.Disposable {
         // if retry connection failed 3 times, throw error
         if (this.retryConnection >= 3) {
             this.retryConnection = 0;
-            vscode.window.showErrorMessage( vscode.l10n.t('Connection lost: {serverName}', {serverName:this.serverName}), vscode.l10n.t('Reload')).then((choice) => {
+            const message = this.lastConnectionError ?
+                vscode.l10n.t('Connection lost: {serverName} ({reason})', {serverName:this.serverName, reason:this.lastConnectionError}) :
+                vscode.l10n.t('Connection lost: {serverName}', {serverName:this.serverName});
+            vscode.window.showErrorMessage(message, vscode.l10n.t('Reload')).then((choice) => {
                 if (choice==='Reload') {
                     vscode.commands.executeCommand("workbench.action.reloadWindow");
                 };
@@ -188,7 +192,7 @@ export class VirtualFileSystem extends vscode.Disposable {
             // reset retry connection
             this.retryConnection = 0;
             this.initializing = undefined;
-            throw new Error( vscode.l10n.t('Connection lost') );
+            throw new Error(message);
         }
         // if evert connection failed, reset socketio
         if (this.retryConnection > 0) {
@@ -231,6 +235,8 @@ export class VirtualFileSystem extends vscode.Disposable {
             vscode.commands.executeCommand(`${ROOT_NAME}.compileManager.compile`);
             return project;
         }).catch((err) => {
+            this.lastConnectionError = err instanceof Error ? err.message : String(err);
+            console.error(`${this.serverName}: failed to initialize Overleaf project connection.`, err);
             this.retryConnection += 1;
             return this.initializingPromise;
         });
@@ -899,12 +905,14 @@ export class VirtualFileSystem extends vscode.Disposable {
                 }
             }
             const res = await this.api.compile(identity, this.projectId, rootResourcePath, draft, stopOnFirstError);
-            if (res.type==='success' && res.compile?.status==='success') {
+            if (res.type==='success' && res.compile?.outputFiles) {
                 // Store CDN download info from the response for subsequent output file requests
                 this.compileGroup = res.compile.compileGroup;
                 this.clsiServerId = res.compile.clsiServerId;
                 this.pdfDownloadDomain = res.compile.pdfDownloadDomain;
                 this.updateOutputs(res.compile.outputFiles);
+            }
+            if (res.type==='success' && (res.compile?.status==='success' || res.compile?.status==='failure')) {
                 return true;
             } else {
                 if (res.message!==undefined) {
