@@ -642,6 +642,15 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         await this.bootstrapLocalReplicaFiles(vfs, baseUri);
     }
 
+    private async openLocalReplicaFolder(projectUri: vscode.Uri, localUri: vscode.Uri, newWindow: boolean) {
+        await this.createLocalReplica(projectUri, localUri);
+        await vscode.commands.executeCommand('vscode.openFolder', localUri, newWindow);
+        if (newWindow) {
+            vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        }
+        vscode.commands.executeCommand('workbench.view.explorer');
+    }
+
     async openProjectLocalReplica(project: ProjectItem, newWindow=false, chooseLocation=false) {
         // should close other open vfs firstly
         const vfsFolder = vscode.workspace.workspaceFolders?.find(folder => folder.uri.scheme===ROOT_NAME);
@@ -660,12 +669,12 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         if (chooseLocation) {
             targetBaseUri = await this.chooseLocalReplicaBaseUri(project);
             if (targetBaseUri===undefined) { return; }
-            if (!replicas.some(replica => this.sameReplicaPath(this.replicaPersistToUri(replica.baseUri), targetBaseUri!))) {
-                await this.createLocalReplica(uri, targetBaseUri);
-                // fetch local replica scm again
-                scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
-                replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
-            }
+            // Always repair/bootstrap the chosen folder. A previous failed attempt may have
+            // persisted the path without writing the local activation files.
+            await this.createLocalReplica(uri, targetBaseUri);
+            // fetch local replica scm again
+            scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
+            replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
         }
         // if not exist, create new one
         if (replicas.length===0) {
@@ -680,20 +689,12 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         const replicasPath = replicas.map(scmPersist => this.replicaPersistToUri(scmPersist.baseUri).fsPath);
         if (replicasPath.length===0) { return; }
         if (targetBaseUri!==undefined) {
-            vscode.commands.executeCommand('vscode.openFolder', targetBaseUri, newWindow);
-            if (newWindow) {
-                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-            }
-            vscode.commands.executeCommand('workbench.view.explorer');
+            await this.openLocalReplicaFolder(uri, targetBaseUri, newWindow);
             return;
         }
         if (replicasPath.length===1) {
-            const uri = vscode.Uri.file(replicasPath[0]);
-            vscode.commands.executeCommand('vscode.openFolder', uri, newWindow);
-            if (newWindow) {
-                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-            }
-            vscode.commands.executeCommand('workbench.view.explorer');
+            const localUri = vscode.Uri.file(replicasPath[0]);
+            await this.openLocalReplicaFolder(uri, localUri, newWindow);
             return;
         }
         const quickPickItems = replicasPath.map(path => {
@@ -735,12 +736,8 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
             quickPick.show();
         })
         .then(path => {
-            const uri = vscode.Uri.file(path as string);
-            vscode.commands.executeCommand('vscode.openFolder', uri, newWindow);
-            if (newWindow) {
-                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-            }
-            vscode.commands.executeCommand('workbench.view.explorer');
+            const localUri = vscode.Uri.file(path as string);
+            return this.openLocalReplicaFolder(uri, localUri, newWindow);
         });
     }
 
