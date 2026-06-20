@@ -43,6 +43,7 @@ export class LocalReplicaSCMProvider extends BaseSCM {
     private ignorePatterns: string[] = [
         '**/.*',
         '**/.*/**',
+        '**/AGENTS.md',
         '**/*.aux',
         '**/__latexindent*',
         '**/*.bbl',
@@ -166,6 +167,40 @@ export class LocalReplicaSCMProvider extends BaseSCM {
             return settings;
         } catch (error) {
             return undefined;
+        }
+    }
+
+    private getDefaultAgentInstructions() {
+        return [
+            '# AGENTS.md',
+            '',
+            'This folder is a local Overleaf Workshop replica.',
+            '',
+            '## Workflow',
+            '- Edit project source files such as `.tex`, `.bib`, `.cls`, and `.sty` in this local folder.',
+            '- Local source changes are synced to the Overleaf project by the VS Code extension.',
+            '- Do not edit files under `.overleaf/` unless you are intentionally changing local replica metadata.',
+            '- Do not edit generated files under `.output/`; they are refreshed from Overleaf compile output.',
+            '',
+            '## Compile Feedback',
+            '- Run `Overleaf Workshop: Compile Project` from VS Code to compile on Overleaf.',
+            '- Read `.overleaf/compile-summary.md` first for a compact status summary.',
+            '- Read `.overleaf/compile-diagnostics.json` for structured errors, warnings, and information.',
+            '- Read `.overleaf/compile.log` or `.output/output.log` for the raw LaTeX log.',
+            '- The compiled PDF is written to `.output/output.pdf` when Overleaf returns one.',
+            '',
+            '## Local-Only Files',
+            '- `AGENTS.md`, `.overleaf/`, and `.output/` are local helper artifacts and should not be uploaded to Overleaf.',
+            '',
+        ].join('\n');
+    }
+
+    private async writeAgentsFileIfMissing() {
+        const agentsUri = vscode.Uri.joinPath(this.baseUri, 'AGENTS.md');
+        try {
+            await vscode.workspace.fs.stat(agentsUri);
+        } catch (error) {
+            await vscode.workspace.fs.writeFile(agentsUri, Buffer.from(this.getDefaultAgentInstructions()));
         }
     }
 
@@ -358,6 +393,12 @@ export class LocalReplicaSCMProvider extends BaseSCM {
             await vscode.workspace.fs.stat(settingUri);
             const content = await vscode.workspace.fs.readFile(settingUri);
             const settings = JSON.parse(new TextDecoder().decode(content));
+            const compileSettings = {
+                remote: true,
+                preview: true,
+                onSave: false,
+                ...(settings.compile ?? {}),
+            };
             const updatedSettings = {
                 ...settings,
                 projectId: settings.projectId ?? this.vfs.projectId,
@@ -368,10 +409,7 @@ export class LocalReplicaSCMProvider extends BaseSCM {
                     enabled: true,
                     direction: 'bidirectional',
                 },
-                compile: settings.compile ?? {
-                    remote: true,
-                    preview: true,
-                },
+                compile: compileSettings,
             };
             if (JSON.stringify(settings) !== JSON.stringify(updatedSettings)) {
                 await vscode.workspace.fs.writeFile(settingUri, Buffer.from(JSON.stringify(updatedSettings, null, 4)));
@@ -392,10 +430,12 @@ export class LocalReplicaSCMProvider extends BaseSCM {
                     'compile': {
                         'remote': true,
                         'preview': true,
+                        'onSave': false,
                     },
                 }, null, 4)
             ));
         }
+        await this.writeAgentsFileIfMissing();
         const files = this.vfs.walk(entity => entity._type !== 'outputs').reduce((record, item) => {
             const path = item.path.replace(/^\/+/, '');
             if (path === '') { return record; }

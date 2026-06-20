@@ -375,6 +375,28 @@ export class CompileManager {
         }
     }
 
+    private async getLocalReplicaUri(remoteUri: vscode.Uri) {
+        const localSetting = await LocalReplicaSCMProvider.readSettings();
+        if (!localSetting?.uri) { return undefined; }
+        const { projectName, pathParts } = parseUri(remoteUri);
+        const rootUri = remoteUri.with({path: `/${projectName}`});
+        if (vscode.Uri.parse(localSetting.uri).toString() !== rootUri.toString()) {
+            return undefined;
+        }
+        return LocalReplicaSCMProvider.pathToUri(pathParts.join('/'));
+    }
+
+    private async isCompileOnSaveEnabled(document: vscode.TextDocument) {
+        const localSetting = await LocalReplicaSCMProvider.readSettings();
+        if (localSetting?.uri && document.uri.scheme === 'file') {
+            const localPath = await LocalReplicaSCMProvider.uriToPath(document.uri);
+            if (localPath !== undefined) {
+                return localSetting.compile?.onSave ?? false;
+            }
+        }
+        return vscode.workspace.getConfiguration(`${ROOT_NAME}.compileOnSave`).get('enabled', false);
+    }
+
     async syncCode() {
         const uri = await CompileManager.check();
         if (uri && vscode.window.activeTextEditor) {
@@ -385,10 +407,14 @@ export class CompileManager {
             const column = startPoint.character;
             this.vfsm.prefetch(uri)
                 .then((vfs) => vfs.syncCode(filePath, line, column))
-                .then((res) => {
+                .then(async (res) => {
                     if (res) {
                         const pdfPath = `${OUTPUT_FOLDER_NAME}/output.pdf`;
-                        const webview = pdfViewRecord[identifier][pdfPath].webviewPanel.webview;
+                        const webview = pdfViewRecord[identifier]?.[pdfPath]?.webviewPanel.webview;
+                        if (!webview) {
+                            vscode.commands.executeCommand(`${ROOT_NAME}.compileManager.viewPdf`);
+                            return;
+                        }
                         // get page
                         webview.postMessage({
                             type: 'syncCode',
@@ -434,12 +460,13 @@ export class CompileManager {
         if (uri) {
             this.vfsm.prefetch(uri)
                 .then((vfs) => vfs.syncPdf(r.page, r.h, r.v))
-                .then((res) => {
+                .then(async (res) => {
                     if (res) {
                         const { projectName } = parseUri(uri);
                         const { file, line, column } = res;
                         const _file = file.match(/output\.[^\.]+$/) ? `${OUTPUT_FOLDER_NAME}/${file}` : file;
-                        const fileUri = uri.with({ path: `/${projectName}/${_file}` });
+                        const remoteFileUri = uri.with({ path: `/${projectName}/${_file}` });
+                        const fileUri = await this.getLocalReplicaUri(remoteFileUri) ?? remoteFileUri;
 
                         let viewColumnToUse: vscode.ViewColumn | undefined;
                         const existingEditor = vscode.window.visibleTextEditors.find(
@@ -568,7 +595,7 @@ export class CompileManager {
             vscode.workspace.onDidSaveTextDocument(async (e) => {
                 const uri = await CompileManager.check.bind(this)(e.uri);
                 const vfs = uri && await this.vfsm.prefetch(uri);
-                const compileCondition = vscode.workspace.getConfiguration(`${ROOT_NAME}.compileOnSave`).get('enabled', true);
+                const compileCondition = await this.isCompileOnSaveEnabled(e);
                 const postfixCondition = e.fileName.match(/\.tex$|\.sty$|\.cls$|\.bib$/i);
                 if (compileCondition && postfixCondition && vfs?.isInvisibleMode===false) {
                     this.compile();

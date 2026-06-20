@@ -4,6 +4,7 @@ import { EventBus } from '../utils/eventBus';
 import { VirtualFileSystem, parseUri } from '../core/remoteFileSystemProvider';
 import { OUTPUT_FOLDER_NAME, ROOT_NAME } from '../consts';
 import { ProjectLabelResponseSchema } from '../api/base';
+import { LocalReplicaSCMProvider } from './localReplicaSCM';
 
 interface HistoryRecord {
     before?: number,
@@ -355,11 +356,21 @@ export class HistoryViewProvider {
         this.historyView = vscode.window.createTreeView(`${ROOT_NAME}.projectHistory`, {treeDataProvider});
         this.treeDataProvider = treeDataProvider;
         this.updateView();
+        this.updateViewFromLocalUri(vscode.window.activeTextEditor?.document.uri);
     }
 
     updateView(pathParts?: string[]) {
         this.historyView.description = pathParts?.at(-1);
         this.treeDataProvider.refreshData( pathParts?.join('/') );
+    }
+
+    private async updateViewFromLocalUri(uri?: vscode.Uri) {
+        if (uri?.scheme !== 'file') { return; }
+        const path = await LocalReplicaSCMProvider.uriToPath(uri);
+        if (path === undefined) { return; }
+        const pathParts = path.replace(/^\/+/, '').split('/');
+        if (pathParts[0]===OUTPUT_FOLDER_NAME || pathParts[0]==='.overleaf') { return; }
+        this.updateView(pathParts);
     }
 
     get triggers() {
@@ -388,7 +399,7 @@ export class HistoryViewProvider {
                     this.updateView( pathParts );
                 }, 100);
             }),
-            //FIXME: on "file://" uri open
+            vscode.window.onDidChangeActiveTextEditor(async (editor) => this.updateViewFromLocalUri(editor?.document.uri)),
         ];
     }
 }

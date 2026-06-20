@@ -421,7 +421,7 @@
       "properties": {
         "overleaf-workshop.compileOnSave.enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "machine",
           "markdownDescription": "%configuration.compileOnSave.enabled.markdownDescription%"
         },
@@ -547,7 +547,7 @@
           "icon": "$(history)",
           "name": "%views.explorer.overleaf-workshop.projectHistory%",
           "contextualTitle": "%views.explorer.overleaf-workshop.contextualTitle%",
-          "when": "resourceScheme == overleaf-workshop"
+          "when": "resourceScheme == overleaf-workshop || overleaf-workshop.activate"
         },
         {
           "type": "webview",
@@ -612,6 +612,11 @@
           "command": "overleaf-workshop.compileManager.viewPdf",
           "when": "(resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile) && resourceExtname == .tex",
           "group": "navigation@2"
+        },
+        {
+          "command": "overleaf-workshop.compileManager.syncCode",
+          "when": "(resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile) && resourceExtname == .tex",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
