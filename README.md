@@ -1,4 +1,6 @@
-# Overleaf Workshop
+# Overleaf Workshop Local
+
+This is an unofficial fork of [Overleaf Workshop](https://github.com/overleaf-workshop/Overleaf-Workshop). It keeps the original AGPL-3.0 license and adds local-replica workflow improvements for agent-friendly editing, Overleaf compile feedback, and project history support in local workspaces.
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/overleaf-workshop/Overleaf-Workshop)](https://github.com/overleaf-workshop/Overleaf-Workshop)
 [![version](https://vsmarketplacebadges.dev/version-short/iamhyc.overleaf-workshop.jpg)](https://marketplace.visualstudio.com/items?itemName=iamhyc.overleaf-workshop)

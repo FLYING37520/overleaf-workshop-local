@@ -1,15 +1,20 @@
 {
-  "name": "overleaf-workshop",
+  "name": "overleaf-workshop-local",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.15.9",
+  "version": "0.15.10",
   "icon": "resources/icons/app_icon.png",
   "author": {
-    "name": "iamhyc",
-    "email": "ychong@petalmail.com"
+    "name": "flying37520",
+    "email": "375203578@qq.com"
   },
-  "publisher": "iamhyc",
+  "publisher": "flying37520",
   "contributors": [
+    {
+      "name": "flying37520",
+      "email": "375203578@qq.com",
+      "url": "https://github.com/FLYING37520"
+    },
     {
       "name": "iamhyc",
       "email": "ychong@petalmail.com",
@@ -47,10 +52,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/overleaf-workshop/overleaf-workshop"
+    "url": "https://github.com/FLYING37520/overleaf-workshop-local"
   },
   "bugs": {
-    "url": "https://github.com/overleaf-workshop/overleaf-workshop/issues"
+    "url": "https://github.com/FLYING37520/overleaf-workshop-local/issues"
   },
   "engines": {
     "vscode": "^1.80.0"

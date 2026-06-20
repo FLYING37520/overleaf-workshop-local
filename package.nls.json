@@ -1,6 +1,6 @@
 {
-    "extension.displayName": "Overleaf Workshop",
-    "extension.description": "Open Overleaf/ShareLaTex projects in VSCode, with full collaboration support.",
+    "extension.displayName": "Overleaf Workshop Local",
+    "extension.description": "Unofficial Overleaf Workshop fork with local replica, agent-friendly editing, compile feedback, and history support.",
 
     "commands.remoteFileSystem.refreshLinkedFile.title": "Overleaf: Refresh File",
     "commands.remoteFileSystem.createLinkedFile.title": "Overleaf: Import File ...",
