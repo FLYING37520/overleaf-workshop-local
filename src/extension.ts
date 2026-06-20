@@ -37,6 +37,15 @@ export function activate(context: vscode.ExtensionContext) {
             if (uri.scheme===ROOT_NAME) {
                 // activate vfs
                 const vfs = (await (await vscode.commands.executeCommand('remoteFileSystem.prefetch', uri))) as VirtualFileSystem;
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+                if (workspaceRoot?.scheme==='file') {
+                    vfs.setProjectSCMPersist(workspaceRoot.toString(), {
+                        enabled: true,
+                        label: LocalReplicaSCMProvider.label,
+                        baseUri: workspaceRoot.toString(),
+                        settings: {},
+                    });
+                }
                 await vfs.init();
                 vscode.commands.executeCommand('setContext', `${ROOT_NAME}.activate`, true);
                 // activate compile & preview
