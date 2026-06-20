@@ -159,7 +159,11 @@ export class LocalReplicaSCMProvider extends BaseSCM {
         try {
             await vscode.workspace.fs.stat(settingUri);
             const content = await vscode.workspace.fs.readFile(settingUri);
-            return JSON.parse( new TextDecoder().decode(content) );
+            const settings = JSON.parse( new TextDecoder().decode(content) );
+            if (settings?.uri && settings.mode===undefined && settings.enableCompileNPreview===false) {
+                settings.enableCompileNPreview = true;
+            }
+            return settings;
         } catch (error) {
             return undefined;
         }
@@ -359,7 +363,7 @@ export class LocalReplicaSCMProvider extends BaseSCM {
                 projectId: settings.projectId ?? this.vfs.projectId,
                 projectName: settings.projectName ?? this.vfs.projectName,
                 mode: settings.mode ?? 'local-first',
-                enableCompileNPreview: settings.enableCompileNPreview ?? true,
+                enableCompileNPreview: settings.mode===undefined && settings.enableCompileNPreview===false ? true : settings.enableCompileNPreview ?? true,
                 sync: settings.sync ?? {
                     enabled: true,
                     direction: 'bidirectional',

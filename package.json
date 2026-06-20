@@ -342,32 +342,27 @@
         "command": "overleaf-workshop.compileManager.compile",
         "title": "%commands.compileManager.compile.title%",
         "icon": "$(debug-start)",
-        "enablement": "(resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile) && resourceExtname == .tex",
         "category": "%extension.displayName%"
       },
       {
         "command": "overleaf-workshop.compileManager.viewPdf",
         "title": "%commands.compileManager.viewPdf.title%",
         "icon": "$(open-preview)",
-        "enablement": "(resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile) && resourceExtname == .tex",
         "category": "%extension.displayName%"
       },
       {
         "command": "overleaf-workshop.compileManager.syncCode",
         "title": "%commands.compileManager.syncCode.title%",
-        "enablement": "editorTextFocus && (resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile) && resourceExtname == .tex",
         "category": "%extension.displayName%"
       },
       {
         "command": "overleaf-workshop.compileManager.setCompiler",
         "title": "%commands.compileManager.setCompiler.title%",
-        "enablement": "resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile",
         "category": "%extension.displayName%"
       },
       {
         "command": "overleaf-workshop.compileManager.setRootDoc",
         "title": "%commands.compileManager.setRootDoc.title%",
-        "enablement": "resourceScheme == overleaf-workshop || overleaf-workshop.activateCompile",
         "category": "%extension.displayName%"
       },
       {

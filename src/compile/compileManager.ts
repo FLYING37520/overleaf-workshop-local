@@ -42,7 +42,7 @@ class CompileDiagnosticProvider {
         return this.validatePath(path).replace(/^\.\//, '').replace(/^\/+/, '');
     }
 
-    private async exportCompileArtifacts(uri: vscode.Uri, vfs: any, content: string, logs: any, hasError: boolean) {
+    private async exportCompileArtifacts(uri: vscode.Uri, vfs: any, content: string, logs: any, hasError: boolean, failureMessage?: string) {
         const workspaceRoot = await this.getLocalReplicaRoot(uri);
         if (workspaceRoot === undefined) { return; }
 
@@ -58,6 +58,7 @@ class CompileDiagnosticProvider {
             errors: [] as any[],
             warnings: [] as any[],
             information: [] as any[],
+            failureMessage,
         };
 
         const toExportItem = (log: ErrorSchema) => ({
@@ -72,6 +73,15 @@ class CompileDiagnosticProvider {
             diagnostics.errors = logs.errors.map(toExportItem);
             diagnostics.warnings = logs.warnings.map(toExportItem);
             diagnostics.information = logs.information.map(toExportItem);
+        } else if (failureMessage !== undefined) {
+            diagnostics.status = 'error';
+            diagnostics.errors = [{
+                file: diagnostics.rootDoc,
+                line: null,
+                level: 'error',
+                message: failureMessage,
+                raw: content,
+            }];
         } else {
             diagnostics.status = content === '' ? 'error' : 'success';
         }
@@ -83,6 +93,7 @@ class CompileDiagnosticProvider {
             `Errors: ${diagnostics.errors.length}`,
             `Warnings: ${diagnostics.warnings.length}`,
             `Information: ${diagnostics.information.length}`,
+            ...(failureMessage ? ['', `Failure: ${failureMessage}`] : []),
             '',
             ...diagnostics.errors.slice(0, 20).map(item => `- ${item.file}${item.line === null ? '' : `:${item.line}`}: ${item.message}`),
             '',
@@ -146,7 +157,14 @@ class CompileDiagnosticProvider {
         const logPath = `${OUTPUT_FOLDER_NAME}/output.log`;
         const _uri = vfs.pathToUri(logPath);
         let content ='';
-        content = new TextDecoder().decode(await vfs.openFile(_uri));
+        try {
+            content = new TextDecoder().decode(await vfs.openFile(_uri));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            content = `Unable to read Overleaf compile log: ${message}`;
+            await this.exportCompileArtifacts(uri, vfs, content, undefined, true, message);
+            return true;
+        }
         const logs = new LatexParser(content).parse();
         if (logs === undefined) {
             await this.exportCompileArtifacts(uri, vfs, content, logs, content === '');
@@ -297,23 +315,24 @@ export class CompileManager {
                     switch (res) {
                         case undefined:
                             await this.update('success');
-                            break;
+                            return false;
                         case false:
                             await this.update('failed');
-                            break;
+                            return true;
                         case true:
                             return true;
                         default:
                             await this.update('alert');
-                            break;
+                            return false;
                     }
                 })
                 .then(status =>
                     status ?
                         vscode.commands.executeCommand(`${ROOT_NAME}.compileManager.compileErrorCheck`, uri)
-                        : Promise.reject()
+                        : undefined
                 )
                 .then(async (hasError) => {
+                    if (hasError === undefined) { return; }
                     if (hasError) {
                         await this.update('failed');
                     } else {
@@ -324,6 +343,10 @@ export class CompileManager {
                     pdfViewRecord[identifier] && Object.values(pdfViewRecord[identifier]).forEach(
                         (record) => record.doc.refresh()
                     );
+                })
+                .catch(async (error) => {
+                    console.error(`${ELEGANT_NAME}: compile feedback export failed.`, error);
+                    await this.update('failed');
                 });
 
         }
