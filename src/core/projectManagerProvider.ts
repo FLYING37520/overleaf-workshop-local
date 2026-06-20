@@ -570,7 +570,40 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         return baseUri.startsWith('file:') ? vscode.Uri.parse(baseUri) : vscode.Uri.file(baseUri);
     }
 
-    async openProjectLocalReplica(project: ProjectItem, newWindow=false) {
+    private sameReplicaPath(left: vscode.Uri, right: vscode.Uri): boolean {
+        const leftPath = left.fsPath;
+        const rightPath = right.fsPath;
+        return process.platform==='win32' ? leftPath.toLowerCase()===rightPath.toLowerCase() : leftPath===rightPath;
+    }
+
+    private async chooseLocalReplicaBaseUri(project: ProjectItem): Promise<vscode.Uri | undefined> {
+        const selection = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            title: vscode.l10n.t('Select Local Replica Folder'),
+            openLabel: vscode.l10n.t('Use Folder'),
+        });
+        if (selection===undefined || selection.length===0) { return undefined; }
+        return LocalReplicaSCMProvider.validateBaseUri(selection[0].fsPath, project.label);
+    }
+
+    private async createLocalReplica(uri: vscode.Uri, baseUri: vscode.Uri) {
+        const vfs = (await (await vscode.commands.executeCommand('remoteFileSystem.prefetch', uri))) as VirtualFileSystem;
+        await vfs.init();
+        vfs.setProjectSCMPersist(baseUri.toString(), {
+            enabled: true,
+            label: LocalReplicaSCMProvider.label,
+            baseUri: baseUri.toString(),
+            settings: {},
+        });
+        const localReplica = new LocalReplicaSCMProvider(vfs, baseUri);
+        const triggers = await localReplica.triggers;
+        triggers.forEach(trigger => trigger.dispose());
+        vfs.dispose();
+    }
+
+    async openProjectLocalReplica(project: ProjectItem, newWindow=false, chooseLocation=false) {
         // should close other open vfs firstly
         const vfsFolder = vscode.workspace.workspaceFolders?.find(folder => folder.uri.scheme===ROOT_NAME);
         if (vfsFolder) {
@@ -583,29 +616,38 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         // fetch existing local replica scm
         let scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
         let replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
+        let targetBaseUri: vscode.Uri | undefined;
+
+        if (chooseLocation) {
+            targetBaseUri = await this.chooseLocalReplicaBaseUri(project);
+            if (targetBaseUri===undefined) { return; }
+            if (!replicas.some(replica => this.sameReplicaPath(this.replicaPersistToUri(replica.baseUri), targetBaseUri!))) {
+                await this.createLocalReplica(uri, targetBaseUri);
+                // fetch local replica scm again
+                scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
+                replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
+            }
+        }
         // if not exist, create new one
         if (replicas.length===0) {
-            const vfs = (await (await vscode.commands.executeCommand('remoteFileSystem.prefetch', uri))) as VirtualFileSystem;
-            const baseUri = LocalReplicaSCMProvider.getDefaultBaseUri(serverName, project.label);
-            await vfs.init();
-            vfs.setProjectSCMPersist(baseUri.toString(), {
-                enabled: true,
-                label: LocalReplicaSCMProvider.label,
-                baseUri: baseUri.toString(),
-                settings: {},
-            });
-            const localReplica = new LocalReplicaSCMProvider(vfs, baseUri);
-            const triggers = await localReplica.triggers;
-            triggers.forEach(trigger => trigger.dispose());
+            targetBaseUri = LocalReplicaSCMProvider.getDefaultBaseUri(serverName, project.label);
+            await this.createLocalReplica(uri, targetBaseUri);
             // fetch local replica scm again
             scmPersists = GlobalStateManager.getServerProjectSCMPersists(this.context, serverName, projectId);
             replicas = Object.values(scmPersists).filter(scmPersist => scmPersist.label===LocalReplicaSCMProvider.label);
-            vfs.dispose();
         }
 
         // open local replica
         const replicasPath = replicas.map(scmPersist => this.replicaPersistToUri(scmPersist.baseUri).fsPath);
         if (replicasPath.length===0) { return; }
+        if (targetBaseUri!==undefined) {
+            vscode.commands.executeCommand('vscode.openFolder', targetBaseUri, newWindow);
+            if (newWindow) {
+                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+            }
+            vscode.commands.executeCommand('workbench.view.explorer');
+            return;
+        }
         if (replicasPath.length===1) {
             const uri = vscode.Uri.file(replicasPath[0]);
             vscode.commands.executeCommand('vscode.openFolder', uri, newWindow);
@@ -733,6 +775,9 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
             }),
             vscode.commands.registerCommand(`${ROOT_NAME}.projectManager.openProjectLocalReplica`, (item) => {
                 this.openProjectLocalReplica(item);
+            }),
+            vscode.commands.registerCommand(`${ROOT_NAME}.projectManager.openProjectLocalReplicaAs`, (item) => {
+                this.openProjectLocalReplica(item, false, true);
             }),
         ];
     }

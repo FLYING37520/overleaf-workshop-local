@@ -26,6 +26,7 @@
     "commands.projectManager.openProjectInCurrentWindow.title": "Open Project in Current Window",
     "commands.projectManager.openProjectInNewWindow.title": "Open Project in New Window",
     "commands.projectManager.openProjectLocalReplica.title": "Open Local Project ...",
+    "commands.projectManager.openProjectLocalReplicaAs.title": "Open Local Project As...",
 
     "commands.projectHistory.refresh.title": "Refresh Project History",
     "commands.projectHistory.clearSelection.title": "Clear Selection",

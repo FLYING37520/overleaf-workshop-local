@@ -278,6 +278,13 @@
         "category": "%extension.displayName%"
       },
       {
+        "command": "overleaf-workshop.projectManager.openProjectLocalReplicaAs",
+        "title": "%commands.projectManager.openProjectLocalReplicaAs.title%",
+        "icon": "$(folder-opened)",
+        "enablement": "viewItem == project || viewItem == project_in_tag",
+        "category": "%extension.displayName%"
+      },
+      {
         "command": "overleaf-workshop.projectHistory.refresh",
         "title": "%commands.projectHistory.refresh.title%",
         "icon": "$(refresh)",
@@ -732,6 +739,11 @@
           "command": "overleaf-workshop.projectManager.openProjectLocalReplica",
           "when": "view == overleaf-workshop.projectManager && viewItem == project || viewItem == project_in_tag",
           "group": "1_openActions@3"
+        },
+        {
+          "command": "overleaf-workshop.projectManager.openProjectLocalReplicaAs",
+          "when": "view == overleaf-workshop.projectManager && viewItem == project || viewItem == project_in_tag",
+          "group": "1_openActions@4"
         },
         {
           "command": "overleaf-workshop.projectHistory.createLabel",
