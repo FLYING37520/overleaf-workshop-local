@@ -588,19 +588,58 @@ export class ProjectManagerProvider implements vscode.TreeDataProvider<DataItem>
         return LocalReplicaSCMProvider.validateBaseUri(selection[0].fsPath, project.label);
     }
 
+    private async bootstrapLocalReplicaFiles(vfs: VirtualFileSystem, baseUri: vscode.Uri) {
+        const overleafUri = vscode.Uri.joinPath(baseUri, '.overleaf');
+        const settingUri = vscode.Uri.joinPath(overleafUri, 'settings.json');
+        await vscode.workspace.fs.createDirectory(overleafUri);
+
+        const defaultSettings = {
+            'uri': vfs.origin.toString(),
+            'serverName': vfs.serverName,
+            'projectId': vfs.projectId,
+            'projectName': vfs.projectName,
+            'mode': 'local-first',
+            'enableCompileNPreview': true,
+            'sync': {
+                'enabled': true,
+                'direction': 'bidirectional',
+            },
+            'compile': {
+                'remote': true,
+                'preview': true,
+                'onSave': false,
+            },
+        };
+
+        try {
+            const content = await vscode.workspace.fs.readFile(settingUri);
+            const settings = JSON.parse(new TextDecoder().decode(content));
+            await vscode.workspace.fs.writeFile(settingUri, Buffer.from(JSON.stringify({
+                ...defaultSettings,
+                ...settings,
+                compile: {
+                    ...defaultSettings.compile,
+                    ...(settings.compile ?? {}),
+                },
+                sync: {
+                    ...defaultSettings.sync,
+                    ...(settings.sync ?? {}),
+                },
+            }, null, 4)));
+        } catch {
+            await vscode.workspace.fs.writeFile(settingUri, Buffer.from(JSON.stringify(defaultSettings, null, 4)));
+        }
+    }
+
     private async createLocalReplica(uri: vscode.Uri, baseUri: vscode.Uri) {
         const vfs = (await (await vscode.commands.executeCommand('remoteFileSystem.prefetch', uri))) as VirtualFileSystem;
-        await vfs.init();
         vfs.setProjectSCMPersist(baseUri.toString(), {
             enabled: true,
             label: LocalReplicaSCMProvider.label,
             baseUri: baseUri.toString(),
             settings: {},
         });
-        const localReplica = new LocalReplicaSCMProvider(vfs, baseUri);
-        const triggers = await localReplica.triggers;
-        triggers.forEach(trigger => trigger.dispose());
-        vfs.dispose();
+        await this.bootstrapLocalReplicaFiles(vfs, baseUri);
     }
 
     async openProjectLocalReplica(project: ProjectItem, newWindow=false, chooseLocation=false) {
