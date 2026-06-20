@@ -276,7 +276,7 @@
         "command": "overleaf-workshop.projectHistory.refresh",
         "title": "%commands.projectHistory.refresh.title%",
         "icon": "$(refresh)",
-        "enablement": "resourceScheme == overleaf-workshop",
+        "enablement": "resourceScheme == overleaf-workshop || overleaf-workshop.activate",
         "category": "%extension.displayName%"
       },
       {
@@ -328,7 +328,7 @@
       {
         "command": "overleaf-workshop.projectHistory.revealHistoryView",
         "title": "%commands.projectHistory.revealHistoryView.title%",
-        "enablement": "resourceScheme == overleaf-workshop",
+        "enablement": "resourceScheme == overleaf-workshop || overleaf-workshop.activate",
         "category": "%extension.displayName%"
       },
       {
